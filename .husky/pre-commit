@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# Pre-commit hook: validate `.env.example` has no assigned values (trims whitespace)
+# Runs before creating a commit to prevent keys/values from being committed.
+
+# If .env.example doesn't exist, fail early to avoid accidental commits without keys
+if [ ! -f .env.example ]; then
+    echo "❌ Error: .env.example file not found"
+    exit 1
+fi
+
+offender_count=0
+offenders=""
+
+while IFS= read -r line || [ -n "$line" ]; do
+  # Skip empty lines and comments
+  case "$line" in
+    ''|\#*) continue ;;
+  esac
+
+  # Only consider lines that look like KEY=...
+  if printf '%s' "$line" | grep -qE '^[A-Z_0-9]+=.*'; then
+    # Extract value (text after first '=')
+    value="${line#*=}"
+    # Trim leading/trailing whitespace
+    trimmed="$(printf '%s' "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    if [ -n "$trimmed" ]; then
+      offender_count=$((offender_count + 1))
+      offenders="$offenders\n$line"
+    fi
+  fi
+done < .env.example
+
+if [ "$offender_count" -gt 0 ]; then
+    echo "❌ COMMIT REJECTED: .env.example contains values!"
+    echo ""
+    echo "The following lines have values assigned:"
+    printf '%b\n' "$offenders" | sed 's/^/  /'
+    echo ""
+    echo "Please remove all values from .env.example. Only keys with empty values are allowed:"
+    echo "  CORRECT:   KEY="
+    echo "  INCORRECT: KEY=value"
+    echo ""
+    exit 1
+fi
+
+exit 0
